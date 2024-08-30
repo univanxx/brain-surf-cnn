@@ -65,7 +65,7 @@ def baseline_arg_parser():
     parser.add_argument("--loss",
                         type=str,
                         default="mse",
-                        choices=("mse", "rc"),
+                        choices=("mse", "multiple_mse", "rc", "weighted", "rc_weighted", "multiple_rc"),
                         help="Loss function, default: MSE")
 
     parser.add_argument("--lr",
@@ -123,6 +123,18 @@ def baseline_arg_parser():
                         type=int,
                         default=10,
                         help="Step for annealing the margins")
+    
+    parser.add_argument("--use_dataset_filtering",
+                        action = "store_true",
+                        help="Use only positive activations")
+    
+    parser.add_argument("--use_unet",
+                        action = "store_true",
+                        help="Use UNet architecture?")
+
+    parser.add_argument("--use_unet_plus_plus",
+                        action = "store_true",
+                        help="Use UNet++ architecture?")
 
     return parser
 

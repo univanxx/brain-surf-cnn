@@ -26,6 +26,10 @@ parser.add_argument("--batch_size",
                     default=10,
                     help="Number of subjects used to compute the within/across subject loss")
 
+parser.add_argument("--use_weighted_loss",
+                    action='store_true',
+                    help="Use weighted loss?")
+
 def compute_loss(pred, target, mask):
     avg_pred = np.mean(pred, 0)
     lh_pred = avg_pred[::2, mask[0, :]]
@@ -38,6 +42,20 @@ def compute_loss(pred, target, mask):
     flat_target = np.concatenate((lh_target.flatten(), rh_target.flatten()), axis=0)
 
     return np.mean((flat_pred - flat_target)**2)
+
+def compute_loss_weighted(pred, target, mask):
+    avg_pred = np.mean(pred, 0)
+    lh_pred = avg_pred[::2, mask[0, :]]
+    rh_pred = avg_pred[1::2, mask[1, :]]
+
+    lh_target = target[::2, mask[0, :]]
+    rh_target = target[1::2, mask[1, :]]
+
+    flat_pred = np.concatenate((lh_pred.flatten(), rh_pred.flatten()), axis=0)
+    flat_target = np.concatenate((lh_target.flatten(), rh_target.flatten()), axis=0)
+
+    l1_target = np.abs(flat_target)
+    return np.sum(l1_target * (flat_pred - flat_target)**2)
 
 if __name__ == "__main__":
 
@@ -57,12 +75,23 @@ if __name__ == "__main__":
         pred = np.load(os.path.join(args.pred_dir, "%s_pred.npy" % subj))
         target = np.load(os.path.join(args.contrast_dir, "%s_joint_LR_task_contrasts.npy" % subj))
 
-        within_mse += (compute_loss(pred, target, mask) / len(subj_ids))
+        if args.use_weighted_loss == True:
+            within_mse += (compute_loss_weighted(pred, target, mask) / len(subj_ids))
 
-        for s in other_samples:
-            other_target = np.load(os.path.join(args.contrast_dir, "%s_joint_LR_task_contrasts.npy" % s))
-            across_mse += compute_loss(pred, other_target, mask) / (len(other_samples) * len(subj_ids))
+            for s in other_samples:
+                other_target = np.load(os.path.join(args.contrast_dir, "%s_joint_LR_task_contrasts.npy" % s))
+                across_mse += compute_loss_weighted(pred, other_target, mask) / (len(other_samples) * len(subj_ids))
+        else:
+            within_mse += (compute_loss(pred, target, mask) / len(subj_ids))
+
+            for s in other_samples:
+                other_target = np.load(os.path.join(args.contrast_dir, "%s_joint_LR_task_contrasts.npy" % s))
+                across_mse += compute_loss(pred, other_target, mask) / (len(other_samples) * len(subj_ids))
 
     print("Within MSE", within_mse)
     print("Across MSE", across_mse)
-    np.save("within_and_across_mse.npy", { "within": within_mse, "across": across_mse })
+
+    if args.use_weighted_loss  == True:
+        np.save("within_and_across_mse_weighted.npy", { "within": within_mse, "across": across_mse })
+    else:
+        np.save("within_and_across_mse.npy", { "within": within_mse, "across": across_mse })

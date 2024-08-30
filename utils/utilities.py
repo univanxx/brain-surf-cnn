@@ -68,6 +68,19 @@ def parse_contrasts_names(contrasts_file):
             contrasts.append(item)
     return contrasts
 
+def contrast_multiple_mse_loss(output, target):
+    recon_loss, across_subj_loss = 0, 0
+    assert(output[0].shape[0] == 2, "Can only handle batch of 2")
+    for output_i in output:
+        recon_loss_i = torch.mean((output_i - target)**2, dim=-1).flatten()
+        flipped_target = torch.flip(target, [0])
+        across_subj_loss_i = torch.mean((output_i - flipped_target)**2, dim=-1).flatten()
+
+        recon_loss += torch.mean(recon_loss_i)
+        across_subj_loss += torch.mean(across_subj_loss_i)
+
+    return recon_loss / len(output), across_subj_loss / len(output)
+
 def contrast_mse_loss(output, target):
     assert(output.shape[0] == 2, "Can only handle batch of 2")
     recon_loss = torch.mean((output - target)**2, dim=-1).flatten()
@@ -76,6 +89,14 @@ def contrast_mse_loss(output, target):
 
     return torch.mean(recon_loss), torch.mean(across_subj_loss)
 
+def contrast_mse_loss_weighted(output, target):
+    target_l1 = torch.abs(target)
+    assert(output.shape[0] == 2, "Can only handle batch of 2")
+    recon_loss = torch.sum(target_l1 * (output - target)**2, dim=-1).flatten()
+    flipped_target = torch.flip(target, [0])
+    across_subj_loss = torch.sum(target_l1 * (output - flipped_target)**2, dim=-1).flatten()
+
+    return torch.mean(recon_loss), torch.mean(across_subj_loss)
 
 def compute_corr_coeff(A,B):
     # Rowwise mean of input arrays & subtract from input arrays
@@ -101,7 +122,7 @@ def save_checkpoint(model, optimizer, scheduler, epoch, fname, output_dir):
     }
     torch.save(checkpoint, os.path.join(output_dir, fname))
 
-def plot_corr_matrices_across_contrasts(all_corrs, contrasts, vmin=-0.2, vmax=0.7, title=None, cmap='plasma', verbose=False):
+def plot_corr_matrices_across_contrasts(all_corrs, contrasts, vmin=-0.2, vmax=0.7, title=None, cmap='plasma', verbose=False, scale_pats=True):
     fig, axes = plt.subplots(1, len(contrasts), figsize=(15, 5))
     fig.subplots_adjust(left=0.02, bottom=0.06, right=0.95, top=0.78, wspace=0.05)
 
@@ -112,7 +133,11 @@ def plot_corr_matrices_across_contrasts(all_corrs, contrasts, vmin=-0.2, vmax=0.
         true_vmin = np.nanmin(corr)
         true_mean = np.nanmean(corr)
 
-        scaled_pred_corr = scale(corr,axis=0)
+        if scale_pats == True:
+            scaled_pred_corr = scale(corr,axis=0)
+        else:
+            scaled_pred_corr = corr
+
         scaled_pred_corr = scale(scaled_pred_corr,axis=1)
 
         scale_level = (np.nanmax(scaled_pred_corr) - np.nanmin(scaled_pred_corr)) / (true_vmax - true_vmin)

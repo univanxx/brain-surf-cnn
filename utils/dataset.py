@@ -5,11 +5,12 @@ import numpy as np
 from torch.utils.data import Dataset
 
 class MultipleSampleMeshDataset(Dataset):
-    def __init__(self, subj_ids, rsfc_dir, contrast_dir, num_samples=8):
+    def __init__(self, subj_ids, rsfc_dir, contrast_dir, num_samples=8, filter_samples=False):
         self.rsfc_dir = rsfc_dir
         self.contrast_dir = contrast_dir
         self.subj_ids = subj_ids
         self.num_samples = num_samples
+        self.filter_samples = filter_samples
 
     def __getitem__(self, index):
         subj = self.subj_ids[index]
@@ -20,7 +21,12 @@ class MultipleSampleMeshDataset(Dataset):
 
         subj_task_data = np.load(os.path.join(self.contrast_dir, "%s_joint_LR_task_contrasts.npy" % subj))
 
-        return torch.cuda.FloatTensor(subj_rsfc_data) , torch.cuda.FloatTensor(subj_task_data)
+        if self.filter_samples == False:
+            return torch.cuda.FloatTensor(subj_rsfc_data) , torch.cuda.FloatTensor(subj_task_data)
+        else:
+            subj_task_data[subj_task_data < 0] = 0
+            return torch.cuda.FloatTensor(subj_rsfc_data) , torch.cuda.FloatTensor(subj_task_data)
+            
 
     def __len__(self):
         return len(self.subj_ids)

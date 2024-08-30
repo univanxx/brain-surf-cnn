@@ -17,20 +17,27 @@ def train(model, train_loader, contrasts, optimizer, loss_fn, loss_type, within_
         data, target = data.cuda(), target.cuda()
         optimizer.zero_grad()
         output = model(data)
-
-        if loss_type == 'mse':
+        
+        if loss_type == 'mse' or loss_type == "multiple_mse":
            loss = loss_fn(output, target)
-        elif loss_type == 'rc':
+        elif loss_type == 'rc' or loss_type == 'multiple_rc':
            within_subj_loss, across_subj_loss = loss_fn(output, target)
            loss = torch.clamp(within_subj_loss - within_subj_margin, min=0.0) + torch.clamp(within_subj_loss - across_subj_loss + across_subj_margin, min = 0.0)
+        elif loss_type == 'rc_weighted':
+           within_subj_loss, across_subj_loss = loss_fn(output, target)
+           loss = torch.clamp(within_subj_loss - within_subj_margin, min=0.0) + torch.clamp(within_subj_loss - across_subj_loss + across_subj_margin, min = 0.0)
+        elif loss_type == "weighted":
+            loss = loss_fn(output, target)
+            target_l1 = torch.abs(target)
+            loss = (loss * target_l1).sum()
         else:
            raise("Invalid loss type")
         
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
-     
-        reshaped_output = np.swapaxes(output.cpu().detach().numpy(), 0, 1)
+  
+        reshaped_output = np.swapaxes(output[0].cpu().detach().numpy(), 0, 1)
         reshaped_target = np.swapaxes(target.cpu().detach().numpy(), 0, 1)
         corrs = np.diag(compute_corr_coeff(reshaped_output.reshape(reshaped_output.shape[0], -1), reshaped_target.reshape(reshaped_target.shape[0], -1)))
         if batch_idx == 0:
@@ -63,17 +70,24 @@ def eval(model, val_loader, contrasts, loss_fn, loss_type, within_subj_margin=0,
             output = model(data)
             n_data = data.size()[0]
 
-            if loss_type == 'mse':
+            if loss_type == 'mse' or loss_type == "multiple_mse":
                loss = loss_fn(output, target)
-            elif loss_type == 'rc':
+            elif loss_type == 'rc' or loss_type == 'multiple_rc':
                within_subj_loss, across_subj_loss = loss_fn(output, target)
                loss = torch.clamp(within_subj_loss - within_subj_margin, min=0.0) + torch.clamp(within_subj_loss - across_subj_loss + across_subj_margin, min = 0.0)
+            elif loss_type == 'rc_weighted':
+               within_subj_loss, across_subj_loss = loss_fn(output, target)
+               loss = torch.clamp(within_subj_loss - within_subj_margin, min=0.0) + torch.clamp(within_subj_loss - across_subj_loss + across_subj_margin, min = 0.0)
+            elif loss_type == "weighted":
+                loss = loss_fn(output, target)
+                target_l1 = torch.abs(target)
+                loss = (loss * target_l1).sum()
             else:
-               raise("Invalid loss type")
+                raise("Invalid loss type")
         
             total_loss += loss.item()
 
-            reshaped_output = np.swapaxes(output.cpu().detach().numpy(), 0, 1)
+            reshaped_output = np.swapaxes(output[0].cpu().detach().numpy(), 0, 1)
             reshaped_target = np.swapaxes(target.cpu().detach().numpy(), 0, 1)
             corrs = np.diag(compute_corr_coeff(reshaped_output.reshape(reshaped_output.shape[0], -1), reshaped_target.reshape(reshaped_target.shape[0], -1)))
             if batch_idx == 0:
