@@ -5,6 +5,9 @@ import torch
 from torch.nn.parameter import Parameter
 
 from model.brain_surf_cnn import BrainSurfCNN
+from model.unet_model import UNet
+from model.unet_plus_plus_model import UNetPlusPlus
+
 from utils.parser import test_args
 from utils.dataset import MultipleSampleMeshDataset
 from utils.utilities import CONTRASTS, save_checkpoint
@@ -28,13 +31,18 @@ if __name__ == "__main__":
     """Load Data"""
     subj_ids = np.genfromtxt(args.subj_list, dtype="<U13")
 
-    model = BrainSurfCNN(
-        mesh_dir=args.mesh_dir,
-        in_ch=args.n_channels_per_hemi*2,
-        out_ch=args.n_output_channels*2,
-        max_level=args.max_mesh_lvl,
-        min_level=args.min_mesh_lvl,
-        fdim=args.n_feat_channels)
+    if args.use_unet == True:
+        model = UNet(args.n_channels_per_hemi*2, args.n_output_channels*2)
+    elif args.use_unet_plus_plus == True:
+        model = UNetPlusPlus(args.n_channels_per_hemi*2, args.n_output_channels*2)
+    else:
+        model = BrainSurfCNN(
+            mesh_dir=args.mesh_dir,
+            in_ch=args.n_channels_per_hemi*2,
+            out_ch=args.n_output_channels*2,
+            max_level=args.max_mesh_lvl,
+            min_level=args.min_mesh_lvl,
+            fdim=args.n_feat_channels)
     model.cuda()
 
     state_dict = torch.load(args.checkpoint_file)['state_dict']
@@ -65,7 +73,7 @@ if __name__ == "__main__":
 
                     sample_pred = model(subj_rsfc_data)
                     
-                    subj_pred.append(sample_pred.cpu().detach().numpy().squeeze(0))
+                    subj_pred.append(sample_pred[-1].cpu().detach().numpy().squeeze(0))
                 subj_pred = np.asarray(subj_pred)
                 np.save(pred_file, subj_pred)
 

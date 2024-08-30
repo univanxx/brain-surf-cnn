@@ -11,25 +11,29 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from model.brain_surf_cnn import BrainSurfCNN
+from model.unet_model import UNet
+from model.unet_plus_plus_model import UNetPlusPlus
+
 from utils import experiment
 from utils.parser import train_args
 from utils.dataset import MultipleSampleMeshDataset
-from utils.utilities import CONTRASTS, parse_contrasts_names, save_checkpoint, contrast_mse_loss
+from utils.utilities import CONTRASTS, parse_contrasts_names, save_checkpoint, contrast_mse_loss, contrast_mse_loss_weighted, contrast_multiple_mse_loss
+from utils.losses import MultipleMSELoss
 
 if __name__ == "__main__":
 
     args = train_args()
-
+    
     """Init"""
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"]= args.gpus
 
-    output_name = "%s_feat%d_s%d_c%d_lr%s_seed%d" % (args.ver, args.n_feat_channels, args.n_samples_per_subj, args.n_channels_per_hemi, str(args.lr), args.seed)
+    output_name = "%s_feat%d_s%d_c%d_lr%s_seed%d_filter_%s_%s" % (args.ver, args.n_feat_channels, args.n_samples_per_subj, args.n_channels_per_hemi, str(args.lr), args.seed, args.use_dataset_filtering, args.loss)
     output_dir = os.path.join(args.save_dir, output_name)
     if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    else:
-        raise Exception("Output dir exists: %s" % output_dir)
+        os.makedirs(output_dir, exist_ok=True)
+    # else:
+    #     raise Exception("Output dir exists: %s" % output_dir)
     writer = SummaryWriter(os.path.join(output_dir, "logs"))
 
 
@@ -44,12 +48,14 @@ if __name__ == "__main__":
         train_subj_ids,
         rsfc_dir=args.rsfc_dir,
         contrast_dir=args.contrast_dir,
-        num_samples=args.n_samples_per_subj)
+        num_samples=args.n_samples_per_subj,
+        filter_samples=args.use_dataset_filtering)
     val_dataset = MultipleSampleMeshDataset(
         val_subj_ids,
         rsfc_dir=args.rsfc_dir,
         contrast_dir=args.contrast_dir,
-        num_samples=args.n_samples_per_subj)
+        num_samples=args.n_samples_per_subj,
+        filter_samples=args.use_dataset_filtering)
 
     train_loader = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True)
     val_loader   = DataLoader(dataset=val_dataset, batch_size=args.batch_size, shuffle=False)
@@ -60,13 +66,18 @@ if __name__ == "__main__":
 
     """Init model"""
     """two hemispheres are concatenated"""
-    model = BrainSurfCNN(
-        mesh_dir=args.mesh_dir,
-        in_ch=args.n_channels_per_hemi*2,
-        out_ch=args.n_output_channels*2,
-        max_level=args.max_mesh_lvl,
-        min_level=args.min_mesh_lvl,
-        fdim=args.n_feat_channels)
+    if args.use_unet == True:
+        model = UNet(args.n_channels_per_hemi*2, args.n_output_channels*2)
+    elif args.use_unet_plus_plus == True:
+        model = UNetPlusPlus(args.n_channels_per_hemi*2, args.n_output_channels*2)
+    else:
+        model = BrainSurfCNN(
+            mesh_dir=args.mesh_dir,
+            in_ch=args.n_channels_per_hemi*2,
+            out_ch=args.n_output_channels*2,
+            max_level=args.max_mesh_lvl,
+            min_level=args.min_mesh_lvl,
+            fdim=args.n_feat_channels)
     model.cuda()
 
     """Loading checkpoint"""
@@ -91,8 +102,16 @@ if __name__ == "__main__":
 
     if (args.loss == "mse"):
         loss_fn = nn.MSELoss()
+    elif (args.loss == "multiple_mse"):
+        loss_fn = MultipleMSELoss()
     elif (args.loss == "rc"):
         loss_fn = contrast_mse_loss
+    elif (args.loss == "rc_weighted"):
+        loss_fn = contrast_mse_loss_weighted
+    elif (args.loss == "multiple_rc"):
+        loss_fn = contrast_multiple_mse_loss
+    elif (args.loss == "weighted"):
+        loss_fn = nn.MSELoss(reduction="none")
     else:
         print("Loss is not implemented")
 
